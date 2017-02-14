@@ -1,5 +1,7 @@
-use std;
-use dns_parser;
+#[macro_use(quick_error)] extern crate quick_error;
+extern crate dns_parser;
+extern crate byteorder;
+extern crate itertools;
 
 quick_error! {
     #[derive(Debug)]
@@ -31,7 +33,9 @@ pub use self::question::Question;
 mod rr;
 pub use self::rr::{ResourceRecord, OptRecord};
 pub use self::rr::{RRData, SrvRecord, SoaRecord, MxRecord};
-pub use self::rr::{A, CNAME};
 
 mod message;
 pub use self::message::{Message, Packet, ResponseCode};
+
+pub mod types;
+

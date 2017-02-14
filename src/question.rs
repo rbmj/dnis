@@ -6,6 +6,10 @@ use byteorder::{BigEndian, WriteBytesExt};
 use super::{Name, Error, Type, Class};
 use dns_parser;
 
+pub trait ToType {
+    fn to_type() -> Type;
+}
+
 #[derive(Clone)]
 pub struct Question {
     pub name: Name,
@@ -15,16 +19,16 @@ pub struct Question {
 }
 
 impl Question {
-    pub fn new(n: Name, c: Class, qt: Type) -> Self {
+    pub fn new<T: ToType>(n: Name, c: Class) -> Self {
         Question{
             name: n,
             prefer_unicast: false, //true, but only actually used for mDNS
-            qtype: qt,
+            qtype: T::to_type(),
             qclass: c
         }
     }
-    pub fn new_str(n: &str, c: Class, qt: Type) -> Result<Self, Error> {
-        Ok(Self::new(try!(Name::from_str(n)), c, qt))
+    pub fn new_str<T: ToType>(n: &str, c: Class) -> Result<Self, Error> {
+        Ok(Self::new::<T>(try!(Name::from_str(n)), c))
     }
 
     pub fn to_string(&self) -> String {

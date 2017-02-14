@@ -1,5 +1,6 @@
-use dns;
-use dns::{Message, Question, Type, ResourceRecord, Class};
+use dnis;
+use dnis::types::*;
+use dnis::{Message, Question, Type, ResourceRecord, Class};
 use dns_parser;
 use dns_parser::Packet;
 
@@ -60,7 +61,7 @@ fn print_packet(pkt: &Packet) {
 #[test]
 fn serialize_query() {
     let mut query = Message::new_query(0x1337);
-    query.add_question(Question::new_str("www.google.com", Class::IN, Type::A).unwrap());
+    query.add_question(Question::new_str::<A>("www.google.com", IN).unwrap());
     print!("{}", query);
     let buf = query.serialize().unwrap();
     let pkt = Packet::parse(&buf[..]).unwrap();
@@ -70,7 +71,7 @@ fn serialize_query() {
 fn serialize_response() {
     let mut response = Message::new_response(0xfeed);
     response.add_answer(ResourceRecord::new_str
-        ::<dns::A>("www.google.com", Class::IN, "8.8.8.8").unwrap());
+        ::<A>("www.google.com", Class::IN, "8.8.8.8").unwrap());
     print!("{}", response);
     let buf = response.serialize().unwrap();
     println!("");

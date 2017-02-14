@@ -71,63 +71,6 @@ pub trait RRDataMap {
     fn unmap(Self::D) -> RRData;
 }
 
-pub trait RRDataUnmapStr {
-    type E;
-    fn unmap_str(&str) -> Result<RRData, Self::E>;
-}
-
-pub struct CNAME;
-impl RRDataMap for CNAME {
-    type D = Name;
-    fn map(rrd: &RRData) -> Option<&Name> {
-        if let &RRData::CNAME(ref n) = rrd {
-            return Some(n);
-        }
-        None
-    }
-    fn map_mut(rrd: &mut RRData) -> Option<&mut Name> {
-        if let &mut RRData::CNAME(ref mut n) = rrd {
-            return Some(n);
-        }
-        None
-    }
-    fn unmap(n: Name) -> RRData {
-        RRData::CNAME(n)
-    }
-}
-impl RRDataUnmapStr for CNAME {
-    type E = Error;
-    fn unmap_str(s: &str) -> Result<RRData, Error> {
-        Ok(RRData::CNAME(Name::from_str(s)?))
-    }
-}
-
-pub struct A;
-impl RRDataMap for A {
-    type D = Ipv4Addr;
-    fn map(rrd: &RRData) -> Option<&Ipv4Addr> {
-        if let &RRData::A(ref addr) = rrd {
-            return Some(addr);
-        }
-        None
-    }
-    fn map_mut(rrd: &mut RRData) -> Option<&mut Ipv4Addr> {
-        if let &mut RRData::A(ref mut addr) = rrd {
-            return Some(addr);
-        }
-        None
-    }
-    fn unmap(a: Ipv4Addr) -> RRData {
-        RRData::A(a)
-    }
-}
-impl RRDataUnmapStr for A {
-    type E = AddrParseError;
-    fn unmap_str(s: &str) -> Result<RRData, AddrParseError> {
-        Ok(RRData::A(Ipv4Addr::from_str(s)?))
-    }
-}
-
 #[derive(Debug)]
 pub enum RRError<T> {
     DNS(Error),
