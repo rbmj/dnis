@@ -6,66 +6,161 @@ use dns_parser;
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Type {
     /// a host addresss
-    A = 1,
+    A,
     /// an authoritative name server
-    NS = 2,
+    NS,
     /// a mail forwarder (Obsolete - use MX)
-    MF = 4,
+    MF,
     /// the canonical name for an alias
-    CNAME = 5,
+    CNAME,
     /// marks the start of a zone of authority
-    SOA = 6,
+    SOA,
     /// a mailbox domain name (EXPERIMENTAL)
-    MB = 7,
+    MB,
     /// a mail group member (EXPERIMENTAL)
-    MG = 8,
+    MG,
     /// a mail rename domain name (EXPERIMENTAL)
-    MR = 9,
+    MR,
     /// a null RR (EXPERIMENTAL)
-    NULL = 10,
+    NULL,
     /// a well known service description
-    WKS = 11,
+    WKS,
     /// a domain name pointer
-    PTR = 12,
+    PTR,
     /// host information
-    HINFO = 13,
+    HINFO,
     /// mailbox or mail list information
-    MINFO = 14,
+    MINFO,
     /// mail exchange
-    MX = 15,
+    MX,
     /// text strings
-    TXT = 16,
+    TXT,
     /// IPv6 host address (RFC 2782)
-    AAAA = 28,
+    AAAA,
     /// service record (RFC 2782)
-    SRV = 33,
+    SRV,
     /// EDNS0 options (RFC 6891)
-    OPT = 41,
+    OPT,
     /// A request for a transfer of an entire zone
-    AXFR = 252,
+    AXFR,
     /// A request for mailbox-related records (MB, MG or MR)
-    MAILB = 253,
+    MAILB,
     /// A request for mail agent RRs (Obsolete - see MX)
-    MAILA = 254,
+    MAILA,
     /// A request for all records
-    All = 255,
+    All,
+    /// Unknown Type
+    Unknown(u16)
+}
+
+impl Into<u16> for Type {
+    fn into(self) -> u16 {
+        use self::Type::*;
+        match self {
+            A => 1,
+            NS => 2,
+            MF => 4,
+            CNAME => 5,
+            SOA => 6,
+            MB => 7,
+            MG => 8,
+            MR => 9,
+            NULL => 10,
+            WKS => 11,
+            PTR => 12,
+            HINFO => 13,
+            MINFO => 14,
+            MX => 15,
+            TXT => 16,
+            AAAA => 28,
+            SRV => 33,
+            OPT => 41,
+            AXFR => 252,
+            MAILB => 253,
+            MAILA => 254,
+            All => 255,
+            Unknown(x) => x
+        }
+    }
+}
+
+impl From<u16> for Type {
+    fn from(code: u16) -> Type {
+        use Type::*;
+        match code {
+            1 => A,
+            2 => NS,
+            4 => MF,
+            5 => CNAME,
+            6 => SOA,
+            7 => MB,
+            8 => MG,
+            9 => MR,
+            10 => NULL,
+            11 => WKS,
+            12 => PTR,
+            13 => HINFO,
+            14 => MINFO,
+            15 => MX,
+            16 => TXT,
+            28 => AAAA,
+            33 => SRV,
+            41 => OPT,
+            252 => AXFR,
+            253 => MAILB,
+            254 => MAILA,
+            255 => All,
+            x => Unknown(x)
+        }
+    }
 }
 
 /// The QCLASS value according to RFC 1035
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Class {
     /// the Internet
-    IN = 1,
+    IN,
     /// the CSNET class (Obsolete - used only for examples in some obsolete
     /// RFCs)
-    CS = 2,
+    CS,
     /// the CHAOS class
-    CH = 3,
+    CH,
     /// Hesiod [Dyer 87]
-    HS = 4,
+    HS,
     /// Any class
-    Any = 255,
+    Any,
+    /// Unknown Class
+    Unknown(u16)
 }
+
+impl From<u16> for Class {
+    fn from(code: u16) -> Class {
+        use self::Class::*;
+        match code {
+            1 => IN,
+            2 => CS,
+            3 => CH,
+            4 => HS,
+            255 => Any,
+            x => Unknown(x)
+        }
+    }
+}
+
+impl Into<u16> for Class {
+    fn into(self) -> u16 {
+        use self::Class::*;
+        match self {
+            IN => 1,
+            CS => 2,
+            CH => 3,
+            HS => 4,
+            Any => 255,
+            Unknown(x) => x
+        }
+    }
+}
+
 
 impl From<dns_parser::QueryClass> for Class {
     fn from(qc: dns_parser::QueryClass) -> Class {
@@ -142,6 +237,80 @@ impl From<dns_parser::Type> for Type {
             dns_parser::Type::AAAA => AAAA,
             dns_parser::Type::SRV => SRV,
             dns_parser::Type::OPT => OPT
+        }
+    }
+}
+
+/// The OPCODE value according to RFC 1035
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Opcode {
+    StandardQuery,
+    InverseQuery,
+    ServerStatusRequest,
+    Reserved(u16),
+}
+
+/// The RCODE value according to RFC 1035
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ResponseCode {
+    NoError,
+    FormatError,
+    ServerFailure,
+    NameError,
+    NotImplemented,
+    Refused,
+    Reserved(u16),
+}
+
+impl From<u16> for Opcode {
+    fn from(code: u16) -> Opcode {
+        use self::Opcode::*;
+        match code {
+            0 => StandardQuery,
+            1 => InverseQuery,
+            2 => ServerStatusRequest,
+            x => Reserved(x),
+        }
+    }
+}
+impl Into<u16> for Opcode {
+    fn into(self) -> u16 {
+        use self::Opcode::*;
+        match self {
+            StandardQuery => 0,
+            InverseQuery => 1,
+            ServerStatusRequest => 2,
+            Reserved(x) => x,
+        }
+    }
+}
+
+impl From<u16> for ResponseCode {
+    fn from(code: u16) -> ResponseCode {
+        use self::ResponseCode::*;
+        match code {
+            0      => NoError,
+            1      => FormatError,
+            2      => ServerFailure,
+            3      => NameError,
+            4      => NotImplemented,
+            5      => Refused,
+            6...15 => Reserved(code),
+            x => panic!("Invalid response code {}", x),
+        }
+    }
+}
+impl Into<u16> for ResponseCode {
+    fn into(self) -> u16 {
+        use self::ResponseCode::*;
+        match self {
+            NoError => 0,
+            FormatError => 1,
+            ServerFailure => 2,
+            NameError => 3,
+            NotImplemented => 4,
+            Refused => 5,
+            Reserved(code) => code,
         }
     }
 }

@@ -1,9 +1,10 @@
 use std::fmt;
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Write, Read};
 //use std::slice::SliceIndex;
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
-use super::{Name, Question, ResourceRecord, OptRecord, Error};
+use super::{Question, ResourceRecord, OptRecord, Error};
+use super::rr::ResourceRecordAddl;
 use dns_parser;
 
 pub use dns_parser::{Packet, Opcode, ResponseCode};
@@ -24,22 +25,40 @@ pub struct Header {
 }
 
 impl Header {
+    pub fn parse<T>(cursor: &mut Cursor<T>) -> Result<Header, Error> 
+        where Cursor<T> : Read
+    {
+        let id = cursor.read_u16::<BigEndian>()?;
+        let flags = cursor.read_u16::<BigEndian>()?;
+        Ok(Header {
+            id: id,
+            query: flags & (1 << 15) == 0,
+            opcode: Opcode::from((flags >> 11) & 0b1111),
+            authoritative: flags & (1 << 10) != 0,
+            truncated: flags & (1 << 9) != 0,
+            recursion_desired: flags & (1 << 8) != 0,
+            recursion_available: flags & (1 << 7) != 0,
+            authenticated_data: false, //FIXME
+            checking_disabled: false, //FIXME
+            response_code: ResponseCode::from((flags & 0b1111) as u8)})
+    }
     pub fn serialize<T>(&self, cursor: &mut Cursor<T>) -> Result<(), Error>
         where Cursor<T> : Write
     {
         cursor.write_u16::<BigEndian>(self.id)?;
         let mut flags = 0u16;
-        if !self.query { flags |= (1 << 15); }
+        if !self.query { flags |= 1 << 15; }
         flags |= match self.opcode {
             Opcode::StandardQuery => 0,
             Opcode::InverseQuery => 1,
             Opcode::ServerStatusRequest => 2,
             _ => 3 //FIXME
         } << 11;
-        if self.authoritative { flags |= (1 << 10); }
-        if self.truncated { flags |= (1 << 9); }
-        if self.recursion_desired { flags |= (1 << 8); }
-        if self.recursion_available {flags |= (1 << 7); }
+        if self.authoritative { flags |= 1 << 10; }
+        if self.truncated { flags |= 1 << 9; }
+        if self.recursion_desired { flags |= 1 << 8; }
+        if self.recursion_available {flags |= 1 << 7; }
+        //FIXME: authenticated_data, checking_disabled
         flags |= match self.response_code {
             ResponseCode::NoError => 0,
             ResponseCode::FormatError => 1,
@@ -82,6 +101,47 @@ impl Message {
     pub fn parse(data: &[u8]) -> Result<Self, Error> {
         let pkt = Packet::parse(data)?;
         Self::from_packet(&pkt)
+    }
+    pub fn parse_new<T>(cursor: &mut Cursor<T>) -> Result<Self, Error> 
+        where Cursor<T> : Read
+    {
+        let header = Header::parse(cursor)?;
+        let num_questions = cursor.read_u16::<BigEndian>()?;
+        let num_answers = cursor.read_u16::<BigEndian>()?;
+        let num_authority = cursor.read_u16::<BigEndian>()?;
+        let num_additional = cursor.read_u16::<BigEndian>()?;
+        let mut msg = Message {
+            head: header,
+            questions: Vec::with_capacity(num_questions as usize),
+            answers: Vec::with_capacity(num_answers as usize),
+            authority: Vec::with_capacity(num_authority as usize),
+            additional: Vec::with_capacity(num_additional as usize),
+            opt: None
+        };
+        for _ in 0..num_questions {
+            msg.questions.push(Question::parse(cursor)?);
+        }
+        for _ in 0..num_answers {
+            msg.answers.push(ResourceRecord::parse(cursor)?);
+        }
+        for _ in 0..num_authority {
+            msg.authority.push(ResourceRecord::parse(cursor)?);
+        }
+        for _ in 0..num_additional {
+            let rr = ResourceRecord::parse_additional(cursor)?;
+            match rr {
+                ResourceRecordAddl::RR(x) => msg.additional.push(x),
+                ResourceRecordAddl::OPT(x) => {
+                    if msg.opt.is_none() {
+                        msg.opt = Some(x);
+                    }
+                    else {
+                        return Err(Error::MultipleOpt);
+                    }
+                }
+            }
+        }
+        Ok(msg)
     }
     pub fn from_header(h: &Header) -> Self {
         Message {

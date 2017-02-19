@@ -12,11 +12,27 @@ quick_error! {
             display("I/O Error: {}", err)
             cause(err)
         }
+        //transitional error
         ParserError(err: dns_parser::Error) {
             from()
             description("Parse Error")
             display("Parse Error: {}", err)
             cause(err)
+        }
+        InvalidOpt {
+            description("Invalid OPT additional record")
+        }
+        MultipleOpt {
+            description("Multiple OPT additional records found")
+        }
+        UnknownLabelFormat {
+            description("Label in domain name has unknown label format")
+        }
+        ParserStateError {
+            description("Invalid parser state")
+        }
+        NameTooLong {
+            description("Domain name is too long")
         }
     }
 }
@@ -31,7 +47,7 @@ mod question;
 pub use self::question::Question;
 
 mod rr;
-pub use self::rr::{ResourceRecord, OptRecord};
+pub use self::rr::{ResourceRecord, OptRecord, RRType};
 pub use self::rr::{RRData, SrvRecord, SoaRecord, MxRecord};
 
 mod message;

@@ -1,14 +1,11 @@
 use std::fmt;
 use std::str::FromStr;
-use std::io::{Cursor, Write};
-use byteorder::{BigEndian, WriteBytesExt};
+use std::io::{Cursor, Write, Read};
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 use super::{Name, Error, Type, Class};
+use super::RRType;
 use dns_parser;
-
-pub trait ToType {
-    fn to_type() -> Type;
-}
 
 #[derive(Clone)]
 pub struct Question {
@@ -19,7 +16,7 @@ pub struct Question {
 }
 
 impl Question {
-    pub fn new<T: ToType>(n: Name, c: Class) -> Self {
+    pub fn new<T: RRType>(n: Name, c: Class) -> Self {
         Question{
             name: n,
             prefer_unicast: false, //true, but only actually used for mDNS
@@ -27,7 +24,7 @@ impl Question {
             qclass: c
         }
     }
-    pub fn new_str<T: ToType>(n: &str, c: Class) -> Result<Self, Error> {
+    pub fn new_str<T: RRType>(n: &str, c: Class) -> Result<Self, Error> {
         Ok(Self::new::<T>(try!(Name::from_str(n)), c))
     }
 
@@ -38,8 +35,8 @@ impl Question {
         where Cursor<T> : Write
     {
         try!(self.name.serialize(cursor));
-        try!(cursor.write_u16::<BigEndian>(self.qtype as u16));
-        let mut class = self.qclass as u16;
+        try!(cursor.write_u16::<BigEndian>(self.qtype.into()));
+        let mut class : u16 = self.qclass.into();
         if self.prefer_unicast { class |= 0x8000u16; }
         try!(cursor.write_u16::<BigEndian>(class));
         Ok(())
@@ -53,6 +50,20 @@ impl Question {
             qclass: Class::from(q.qclass)
         })
     }
+    pub fn parse<T>(cursor: &mut Cursor<T>) -> Result<Self, Error> 
+        where Cursor<T> : Read
+    {
+        let n = Name::parse(cursor)?;
+        let qtype = cursor.read_u16::<BigEndian>()?;
+        let qclass = cursor.read_u16::<BigEndian>()?;
+        Ok(Question {
+            name: n,
+            prefer_unicast: false,
+            qtype: Type::from(qtype),
+            qclass: Class::from(qclass)
+        })
+    }
+
 }
 
 impl fmt::Display for Question {

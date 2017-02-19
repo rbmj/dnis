@@ -1,9 +1,9 @@
 use std::fmt;
 use std::str::FromStr;
-use std::io::{Cursor, Write};
-use std::iter::Rev;
-use std::slice::Iter;
-use byteorder::WriteBytesExt;
+use std::io::{Cursor, Write, Read};
+use std::collections::VecDeque;
+use std::collections::vec_deque::Iter as VecDequeIter;
+use byteorder::{WriteBytesExt, ReadBytesExt};
 use itertools::Itertools;
 use dns_parser::Error::LabelIsNotAscii;
 
@@ -40,6 +40,9 @@ impl Label {
         }
         Ok(())
     }
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 }
 
 impl fmt::Display for Label {
@@ -50,7 +53,13 @@ impl fmt::Display for Label {
 
 #[derive(Clone)]
 pub struct Name {
-    labels: Vec<Label>
+    labels: VecDeque<Label>
+}
+
+enum ParseLabel {
+    L(Label),
+    End,
+    Pointer(u16)
 }
 
 impl Name {
@@ -61,13 +70,64 @@ impl Name {
         self.iter().join(".")
     }
     pub fn push(&mut self, l: Label) {
-        self.labels.push(l);
+        self.labels.push_front(l);
     }
     pub fn pop(&mut self) {
-        self.labels.pop();
+        self.labels.pop_front();
     }
-    pub fn iter(&self) -> Rev<Iter<Label>> {
-        self.labels.iter().rev()
+    pub fn iter(&self) -> VecDequeIter<Label> {
+        self.labels.iter()
+    }
+    pub fn len(&self) -> usize {
+        self.labels.iter().map(|l| l.len()).fold(0, |acc, x| acc + x)
+    }
+    fn read_label<T>(cursor: &mut Cursor<T>, buf: &mut [u8]) -> Result<ParseLabel, Error>
+        where Cursor<T> : Read
+    {
+        let len = cursor.read_u8()?;
+        if len == 0 { return Ok(ParseLabel::End); }
+        if len >> 6 == 0b11 {
+            let mut dest = (len & 0b0011_1111) as u16;
+            dest = (dest << 8) | (cursor.read_u8()? as u16);
+            return Ok(ParseLabel::Pointer(dest));
+        }
+        if len >> 6 == 0b00 {
+            cursor.read_exact(&mut buf[0..(len as usize)])?;
+            let label = Label::from_str(&*String::from_utf8_lossy(&buf[0..(len as usize)]))?;
+            return Ok(ParseLabel::L(label));
+        }
+        return Err(Error::UnknownLabelFormat);
+    }
+    pub fn parse<T>(cursor: &mut Cursor<T>) -> Result<Name, Error>
+        where Cursor<T> : Read
+    {
+        let mut name = Name { labels: VecDeque::new() };
+        let mut pos = 0u64; //always invalid
+        let mut buf = [0u8; 64];
+        for _ in 1..128 { //prevent malicious packets from causing infinite loop
+            match Self::read_label(cursor, &mut buf)? {
+                ParseLabel::End => {
+                    if name.len() > 255 {
+                        return Err(Error::NameTooLong);
+                    }
+                    if pos != 0 {
+                        cursor.set_position(pos);
+                    }
+                    return Ok(name);
+                }
+                ParseLabel::L(l) => {
+                    name.labels.push_back(l);
+                }
+                ParseLabel::Pointer(off) => {
+                    if pos == 0 {
+                        pos = cursor.position();
+                    }
+                    cursor.set_position(off as u64);
+                }
+            }
+        }
+        //maximum label depth exceeded
+        return Err(Error::NameTooLong);
     }
     pub fn serialize<T>(&self, cursor: &mut Cursor<T>) -> Result<(), Error> 
         where Cursor<T> : Write
@@ -84,7 +144,7 @@ impl FromStr for Name {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(Name { labels: s.split('.').rev().map(|s| Label::from_str(s))
-            .collect::<Result<Vec<_>, Error>>()? })
+            .collect::<Result<VecDeque<_>, Error>>()? })
     }
 }
 
