@@ -1,5 +1,4 @@
 #[macro_use(quick_error)] extern crate quick_error;
-extern crate dns_parser;
 extern crate byteorder;
 extern crate itertools;
 
@@ -10,13 +9,6 @@ quick_error! {
             from()
             description("I/O Error")
             display("I/O Error: {}", err)
-            cause(err)
-        }
-        //transitional error
-        ParserError(err: dns_parser::Error) {
-            from()
-            description("Parse Error")
-            display("Parse Error: {}", err)
             cause(err)
         }
         InvalidOpt {
@@ -34,11 +26,14 @@ quick_error! {
         NameTooLong {
             description("Domain name is too long")
         }
+        InvalidLabel {
+            description("Invalid characters in DNS label")
+        }
     }
 }
 
 mod enums;
-pub use self::enums::{Class, Type};
+pub use self::enums::{Class, Type, Opcode, ResponseCode};
 
 mod name;
 pub use self::name::{Label, Name};
@@ -51,7 +46,9 @@ pub use self::rr::{ResourceRecord, OptRecord, RRType};
 pub use self::rr::{RRData, SrvRecord, SoaRecord, MxRecord};
 
 mod message;
-pub use self::message::{Message, Packet, ResponseCode};
+pub use self::message::Message;
 
 pub mod types;
 
+#[cfg(test)]
+mod tests;

@@ -3,11 +3,9 @@ use std::io::{Cursor, Write, Read};
 //use std::slice::SliceIndex;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
-use super::{Question, ResourceRecord, OptRecord, Error};
+use super::{Question, ResourceRecord, OptRecord, Error, Opcode, ResponseCode};
 use super::rr::ResourceRecordAddl;
-use dns_parser;
 
-pub use dns_parser::{Packet, Opcode, ResponseCode};
 pub use std::slice::{Iter, IterMut};
 
 #[derive(Clone)]
@@ -40,7 +38,7 @@ impl Header {
             recursion_available: flags & (1 << 7) != 0,
             authenticated_data: false, //FIXME
             checking_disabled: false, //FIXME
-            response_code: ResponseCode::from((flags & 0b1111) as u8)})
+            response_code: ResponseCode::from(flags & 0b1111)})
     }
     pub fn serialize<T>(&self, cursor: &mut Cursor<T>) -> Result<(), Error>
         where Cursor<T> : Write
@@ -71,20 +69,6 @@ impl Header {
         cursor.write_u16::<BigEndian>(flags)?;
         Ok(())
     }
-    pub fn from_packet(header: &dns_parser::Header) -> Self {
-        Header {
-            id: header.id,
-            query: header.query,
-            opcode: header.opcode,
-            authoritative: header.authoritative,
-            truncated: header.truncated,
-            recursion_desired: header.recursion_desired,
-            recursion_available: header.recursion_available,
-            authenticated_data: header.authenticated_data,
-            checking_disabled: header.checking_disabled,
-            response_code: header.response_code
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -94,13 +78,13 @@ pub struct Message {
     answers: Vec<ResourceRecord>,
     authority: Vec<ResourceRecord>,
     additional: Vec<ResourceRecord>,
-    opt: Option<OptRecord>
+    pub opt: Option<OptRecord> //FIXME
 }
 
 impl Message {
     pub fn parse(data: &[u8]) -> Result<Self, Error> {
-        let pkt = Packet::parse(data)?;
-        Self::from_packet(&pkt)
+        let mut curs = Cursor::new(&data);
+        Self::parse_new(&mut curs)
     }
     pub fn parse_new<T>(cursor: &mut Cursor<T>) -> Result<Self, Error> 
         where Cursor<T> : Read
@@ -228,28 +212,6 @@ impl Message {
             opt: None
         }
     }
-    pub fn from_packet<'a>(pkt: &Packet<'a>) -> Result<Self, Error> {
-        try!(Self::sanity_check_pkt(pkt));
-        let mut o = None;
-        if let Some(ref opt) = pkt.opt {
-            o = Some(OptRecord::from_packet(opt)?);
-        }
-        Ok(Message{
-            head: Header::from_packet(&pkt.header),
-            questions: pkt.questions.iter().map(|q| Question::from_packet(q))
-                .collect::<Result<Vec<_>, _>>()?,
-            answers: pkt.answers.iter().map(|rr| ResourceRecord::from_packet(rr))
-                .collect::<Result<Vec<_>, _>>()?,
-            authority: pkt.nameservers.iter().map(|rr| ResourceRecord::from_packet(rr))
-                .collect::<Result<Vec<_>, _>>()?,
-            additional: pkt.additional.iter().map(|rr| ResourceRecord::from_packet(rr))
-                .collect::<Result<Vec<_>, _>>()?,
-            opt: o
-        })
-    }
-    pub fn header(&self) -> &Header {
-        &self.head
-    }
     pub fn id(&self) -> u16 {
         self.head.id
     }
@@ -261,6 +223,36 @@ impl Message {
     }
     pub fn is_response(&self) -> bool {
         !self.head.query
+    }
+    pub fn is_truncated(&self) -> bool {
+        self.head.truncated
+    }
+    pub fn is_authoritative(&self) -> bool {
+        self.head.authoritative
+    }
+    pub fn recursion_desired(&self) -> bool {
+        self.head.recursion_desired
+    }
+    pub fn recursion_available(&self) -> bool {
+        self.head.recursion_available
+    }
+    pub fn opcode(&self) -> Opcode {
+        self.head.opcode
+    }
+    pub fn response_code(&self) -> ResponseCode {
+        self.head.response_code
+    }
+    pub fn num_questions(&self) -> usize {
+        self.questions.len()
+    }
+    pub fn num_answers(&self) -> usize {
+        self.answers.len()
+    }
+    pub fn num_authority(&self) -> usize {
+        self.authority.len()
+    }
+    pub fn num_additional(&self) -> usize {
+        self.additional.len()
     }
     pub fn iter_questions(&self) -> Iter<Question> {
         self.questions.iter()
@@ -380,25 +372,6 @@ impl Message {
         if let Some(ref o) = self.opt { try!(o.serialize(&mut curs)); }
         return Ok(curs.into_inner());
     }
-    fn sanity_check_pkt(pkt: &Packet) -> Result<(), Error> {
-        if pkt.questions.len() != pkt.header.questions as usize {
-            return Err(Error::ParserError(dns_parser::Error::WrongState));
-        }
-        if pkt.answers.len() != pkt.header.answers as usize {
-            return Err(Error::ParserError(dns_parser::Error::WrongState));
-        }
-        if pkt.nameservers.len() != pkt.header.nameservers as usize {
-            return Err(Error::ParserError(dns_parser::Error::WrongState));
-        }
-        let mut numaddl = pkt.additional.len();
-        if pkt.opt.is_some() {
-            numaddl += 1;
-        }
-        if numaddl != pkt.header.additional as usize {
-            return Err(Error::ParserError(dns_parser::Error::WrongState));
-        }
-        Ok(())
-    }
     fn fmt_header(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "DNS Message {:x}:", self.head.id)?;
         if self.head.query {
@@ -416,7 +389,7 @@ impl Message {
         if self.head.authenticated_data { write!(f, " auth")?; }
         if self.head.checking_disabled { write!(f, " nocheck")?; }
         write!(f, "\n")?;
-        if self.head.response_code != dns_parser::ResponseCode::NoError {
+        if self.head.response_code != ResponseCode::NoError {
             writeln!(f, "\t{:?}", self.head.response_code)?;
         }
         Ok(())

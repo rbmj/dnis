@@ -5,13 +5,12 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 use super::{Name, Error, Class, Type};
-use dns_parser;
 
 #[derive(Clone)]
 pub struct ResourceRecord {
-    pub name: Name,
+    pub rrname: Name,
     pub multicast_unique: bool,
-    pub class: Class,
+    pub rrclass: Class,
     pub ttl: u32,
     pub data: RRData
 }
@@ -138,6 +137,12 @@ impl ResourceRecord {
             &RRData::Unknown(ref x) => return Type::Unknown(x.typecode)
         }
     }
+    pub fn name(&self) -> &Name { 
+        &self.rrname
+    }
+    pub fn class(&self) -> Class {
+        self.rrclass
+    }
     pub fn is<T: RRType>(&self) -> bool {
         T::map(&self.data).is_some()
     }
@@ -153,9 +158,9 @@ impl ResourceRecord {
     }
     pub fn new_ttl<T: RRType>(n: Name, ttl: u32, c: Class, d: T::D) -> Self {
         ResourceRecord {
-            name: n,
+            rrname: n,
             multicast_unique: false, //only set in mDNS
-            class: c,
+            rrclass: c,
             ttl: ttl,
             data: T::unmap(d)
         }
@@ -171,9 +176,9 @@ impl ResourceRecord {
         -> Result<Self, RRError<<<T as RRType>::D as FromStr>::Err>>
         where T: RRType, T::D: FromStr
     {
-        let name = try!(Name::from_str(n).map_err(RRError::DNS));
+        let rrname = try!(Name::from_str(n).map_err(RRError::DNS));
         let data = try!(T::D::from_str(d).map_err(RRError::DataConv));
-        Ok(Self::new_ttl::<T>(name, ttl, c, data))
+        Ok(Self::new_ttl::<T>(rrname, ttl, c, data))
     }
     pub fn parse<T>(cursor: &mut Cursor<T>) -> Result<Self, Error>
         where Cursor<T> : Read
@@ -192,9 +197,9 @@ impl ResourceRecord {
             x.typecode = t.into();
         }
         Ok(ResourceRecord {
-            name: n,
-            multicast_unique: false,
-            class: Class::from(c),
+            rrname: n,
+            multicast_unique: c & (1 << 15) != 0,
+            rrclass: Class::from(c & 0x7fff),
             ttl: ttl,
             data: data
         })
@@ -229,55 +234,44 @@ impl ResourceRecord {
     pub fn serialize<T>(&self, cursor: &mut Cursor<T>) -> Result<(), Error> 
         where Cursor<T> : Write
     {
-        try!(self.name.serialize(cursor));
-        try!(cursor.write_u16::<BigEndian>(self.data.get_typenum()));
-        let mut class : u16 = self.class.into();
-        if self.multicast_unique { class |= 0x8000; }
-        try!(cursor.write_u16::<BigEndian>(class));
+        try!(self.rrname.serialize(cursor));
+        try!(cursor.write_u16::<BigEndian>(self.get_type().into()));
+        let mut rrclass : u16 = self.rrclass.into();
+        if self.multicast_unique { rrclass |= 0x8000; }
+        try!(cursor.write_u16::<BigEndian>(rrclass));
         try!(cursor.write_u32::<BigEndian>(self.ttl));
         try!(self.data.serialize(cursor));
         Ok(())
     }
-    pub fn from_packet(rr: &dns_parser::ResourceRecord) -> Result<Self, Error> {
-        let n = Name::from_string(rr.name.to_string())?;
-        Ok(ResourceRecord{
-            name: n,
-            multicast_unique: rr.multicast_unique,
-            class: Class::from(rr.cls),
-            ttl: rr.ttl,
-            data: RRData::from_packet(&rr.data)?
-        })
-    }
-    
 }
 
 impl fmt::Display for ResourceRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         //FIXME: optionally include TTL
         match &self.data {
-            &RRData::CNAME(ref n) => write!(f, "{} {:?} CNAME {}", self.name,
-                self.class, n),
-            &RRData::NS(ref n) => write!(f, "{} {:?} NS {}", self.name,
-                self.class, n),
-            &RRData::A(ref a) => write!(f, "{} {:?} A {}", self.name,
-                self.class, a),
-            &RRData::AAAA(ref a) => write!(f, "{} {:?} AAAA {}", self.name,
-                self.class, a),
+            &RRData::CNAME(ref n) => write!(f, "{} {:?} CNAME {}", self.rrname,
+                self.rrclass, n),
+            &RRData::NS(ref n) => write!(f, "{} {:?} NS {}", self.rrname,
+                self.rrclass, n),
+            &RRData::A(ref a) => write!(f, "{} {:?} A {}", self.rrname,
+                self.rrclass, a),
+            &RRData::AAAA(ref a) => write!(f, "{} {:?} AAAA {}", self.rrname,
+                self.rrclass, a),
             &RRData::SRV(ref rec) => write!(f, "{} {:?} SRV {} {} {} {}",
-                self.name, self.class, rec.priority, rec.weight,
+                self.rrname, self.rrclass, rec.priority, rec.weight,
                 rec.port, rec.target),
             &RRData::SOA(ref rec) => write!(f,
-                "{} {:?} SOA {} {} ({} {} {} {} {})", self.name,
-                self.class, rec.primary_ns, rec.mailbox, rec.serial,
+                "{} {:?} SOA {} {} ({} {} {} {} {})", self.rrname,
+                self.rrclass, rec.primary_ns, rec.mailbox, rec.serial,
                 rec.refresh, rec.retry, rec.expire, rec.min_ttl),
-            &RRData::PTR(ref n) => write!(f, "{} {:?} PTR {}", self.name,
-                self.class, n),
-            &RRData::MX(ref rec) => write!(f, "{} {:?} MX {} {}", self.name,
-                self.class, rec.preference, rec.exchange),
-            &RRData::TXT(ref v) => write!(f, "{} {:?} TXT \"{}\"", self.name,
-                self.class, String::from_utf8_lossy(&v[..])),
+            &RRData::PTR(ref n) => write!(f, "{} {:?} PTR {}", self.rrname,
+                self.rrclass, n),
+            &RRData::MX(ref rec) => write!(f, "{} {:?} MX {} {}", self.rrname,
+                self.rrclass, rec.preference, rec.exchange),
+            &RRData::TXT(ref v) => write!(f, "{} {:?} TXT \"{}\"", self.rrname,
+                self.rrclass, String::from_utf8_lossy(&v[..])),
             &RRData::Unknown(ref v) => {
-                write!(f, "{} {:?} <UNKNOWN> [", self.name, self.class)?;
+                write!(f, "{} {:?} <UNKNOWN> [", self.rrname, self.rrclass)?;
                 let mut first = true;
                 for byte in &v.data {
                     if !first { write!(f, ", ")?; }
@@ -303,59 +297,9 @@ impl OptRecord {
         cursor.write_all(&self.data[..])?;
         Ok(())
     }
-    pub fn from_packet(rr: &dns_parser::OptRecord) -> Result<Self, Error> {
-        Ok(OptRecord{
-            udp: rr.udp,
-            extrcode: rr.extrcode,
-            version: rr.version,
-            flags: rr.flags,
-            data: Vec::<u8>::new()}) //FIXME
-    }
 }
 
 impl RRData {
-    fn get_typenum(&self) -> u16 {
-        match *self {
-                RRData::CNAME(_) => 5,
-                RRData::NS(_) => 2,
-                RRData::A(_) => 1,
-                RRData::AAAA(_) => 28,
-                RRData::SRV(_) => 33,
-                RRData::SOA(_) => 6,
-                RRData::PTR(_) => 12,
-                RRData::MX(_) => 15,
-                RRData::TXT(_) => 16,
-                RRData::Unknown(ref x) => x.typecode
-        }
-    }
-    fn from_packet(rrd: &dns_parser::RRData) -> Result<Self, Error> {
-        let ret = match *rrd {
-            dns_parser::RRData::CNAME(ref n) => RRData::CNAME(Name::from_string(n.to_string())?),
-            dns_parser::RRData::NS(ref n) => RRData::NS(Name::from_string(n.to_string())?),
-            dns_parser::RRData::A(ref a) => RRData::A(a.clone()),
-            dns_parser::RRData::AAAA(ref a) => RRData::AAAA(a.clone()),
-            dns_parser::RRData::SRV{priority, weight, port, target} =>
-                RRData::SRV(SrvRecord{
-                    priority: priority,
-                    weight:  weight,
-                    port: port,
-                    target: Name::from_string(target.to_string())?}),
-            dns_parser::RRData::SOA(ref rec) => RRData::SOA(SoaRecord{
-                primary_ns: Name::from_string(rec.primary_ns.to_string())?,
-                mailbox: Name::from_string(rec.mailbox.to_string())?,
-                serial: rec.serial,
-                refresh: rec.refresh,
-                retry: rec.retry,
-                expire: rec.expire,
-                min_ttl: rec.minimum_ttl}),
-            dns_parser::RRData::PTR(ref n) => RRData::PTR(Name::from_string(n.to_string())?),
-            dns_parser::RRData::MX{preference: pref, exchange: ex} => RRData::MX(MxRecord{
-                preference: pref,
-                exchange: Name::from_string(ex.to_string())?}),
-            dns_parser::RRData::Unknown(ref v) => RRData::Unknown(UnknownRecord{typecode: 0, data: v.iter().map(|x| *x).collect()}) //FIXME: Smell
-        };
-        Ok(ret)
-    }
     pub fn serialize<T>(&self, cursor: &mut Cursor<T>) -> Result<(), Error> 
         where Cursor<T> : Write
     {

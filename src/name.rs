@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use std::collections::vec_deque::Iter as VecDequeIter;
 use byteorder::{WriteBytesExt, ReadBytesExt};
 use itertools::Itertools;
-use dns_parser::Error::LabelIsNotAscii;
 
 use super::Error;
 
@@ -16,8 +15,8 @@ pub struct Label {
 
 impl Label {
     fn check(s: &str) -> Result<(), Error> {
-        if !s.chars().all(|c| c.is_digit(36) || c == '-') || s.len() == 0 {
-            return Err(Error::ParserError(LabelIsNotAscii));
+        if !s.chars().all(|c| c.is_digit(36) || c == '-' || c == '_') || s.len() == 0 {
+            return Err(Error::InvalidLabel);
         }
         Ok(())
     }
@@ -143,7 +142,7 @@ impl Name {
 impl FromStr for Name {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Error> {
-        Ok(Name { labels: s.split('.').rev().map(|s| Label::from_str(s))
+        Ok(Name { labels: s.split('.').map(|s| Label::from_str(s))
             .collect::<Result<VecDeque<_>, Error>>()? })
     }
 }
