@@ -9,7 +9,7 @@ use super::rr::ResourceRecordAddl;
 pub use std::slice::{Iter, IterMut};
 
 #[derive(Clone)]
-pub struct Header {
+struct Header {
     pub id: u16,
     pub query: bool,
     pub opcode: Opcode,
@@ -57,15 +57,8 @@ impl Header {
         if self.recursion_desired { flags |= 1 << 8; }
         if self.recursion_available {flags |= 1 << 7; }
         //FIXME: authenticated_data, checking_disabled
-        flags |= match self.response_code {
-            ResponseCode::NoError => 0,
-            ResponseCode::FormatError => 1,
-            ResponseCode::ServerFailure => 2,
-            ResponseCode::NameError => 3,
-            ResponseCode::NotImplemented => 4,
-            ResponseCode::Refused => 5,
-            _ => 6 //FIXME
-        };
+        let x : u16 = self.response_code.into();
+        flags |= x;
         cursor.write_u16::<BigEndian>(flags)?;
         Ok(())
     }
@@ -127,7 +120,8 @@ impl Message {
         }
         Ok(msg)
     }
-    pub fn from_header(h: &Header) -> Self {
+    pub fn from_header(msg: &Self) -> Self {
+        let h = &msg.head;
         Message {
             head: Header {
                 id: h.id,
@@ -199,7 +193,7 @@ impl Message {
                 opcode: Opcode::StandardQuery,
                 authoritative: false,
                 truncated: false,
-                recursion_desired: false,
+                recursion_desired: true,
                 recursion_available: true,
                 authenticated_data: false,
                 checking_disabled: false,
@@ -221,8 +215,14 @@ impl Message {
     pub fn is_request(&self) -> bool {
         self.head.query
     }
+    pub fn set_request(&mut self) {
+        self.head.query = true;
+    }
     pub fn is_response(&self) -> bool {
         !self.head.query
+    }
+    pub fn set_response(&mut self) {
+        self.head.query = false;
     }
     pub fn is_truncated(&self) -> bool {
         self.head.truncated
@@ -230,17 +230,32 @@ impl Message {
     pub fn is_authoritative(&self) -> bool {
         self.head.authoritative
     }
+    pub fn set_authoritative(&mut self, a: bool) {
+        self.head.authoritative = a;
+    }
     pub fn recursion_desired(&self) -> bool {
         self.head.recursion_desired
+    }
+    pub fn set_recursion_desired(&mut self, rd: bool) {
+        self.head.recursion_desired = rd;
     }
     pub fn recursion_available(&self) -> bool {
         self.head.recursion_available
     }
+    pub fn set_recursion_available(&mut self, ra: bool) {
+        self.head.recursion_available = ra;
+    }
     pub fn opcode(&self) -> Opcode {
         self.head.opcode
     }
+    pub fn set_opcode(&mut self, o: Opcode) {
+        self.head.opcode = o;
+    }
     pub fn response_code(&self) -> ResponseCode {
         self.head.response_code
+    }
+    pub fn set_response_code(&mut self, r: ResponseCode) {
+        self.head.response_code = r;
     }
     pub fn num_questions(&self) -> usize {
         self.questions.len()

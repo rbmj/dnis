@@ -172,12 +172,16 @@ pub enum Opcode {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ResponseCode {
     NoError,
-    FormatError,
-    ServerFailure,
-    NameError,
-    NotImplemented,
+    FormErr,
+    ServFail,
+    NxDomain,
+    NotImp,
     Refused,
-    Reserved(u16),
+    YxDomain,
+    XRRSet,
+    NotAuth,
+    NotZone,
+    Reserved(u16)
 }
 
 impl From<u16> for Opcode {
@@ -207,13 +211,17 @@ impl From<u16> for ResponseCode {
     fn from(code: u16) -> ResponseCode {
         use self::ResponseCode::*;
         match code {
-            0      => NoError,
-            1      => FormatError,
-            2      => ServerFailure,
-            3      => NameError,
-            4      => NotImplemented,
-            5      => Refused,
-            6...15 => Reserved(code),
+            0       => NoError,
+            1       => FormErr,
+            2       => ServFail,
+            3       => NxDomain,
+            4       => NotImp,
+            5       => Refused,
+            6       => YxDomain,
+            7       => XRRSet,
+            8       => NotAuth,
+            9       => NotZone,
+            10...15 => Reserved(code),
             x => panic!("Invalid response code {}", x),
         }
     }
@@ -222,12 +230,16 @@ impl Into<u16> for ResponseCode {
     fn into(self) -> u16 {
         use self::ResponseCode::*;
         match self {
-            NoError => 0,
-            FormatError => 1,
-            ServerFailure => 2,
-            NameError => 3,
-            NotImplemented => 4,
-            Refused => 5,
+            NoError        => 0,
+            FormErr        => 1,
+            ServFail       => 2,
+            NxDomain       => 3,
+            NotImp         => 4,
+            Refused        => 5,
+            YxDomain       => 6,
+            XRRSet         => 7,
+            NotAuth        => 8,
+            NotZone        => 9,
             Reserved(code) => code,
         }
     }

@@ -127,7 +127,7 @@ fn parse_soa_response() {
     assert!(!message.is_truncated());
     assert!(message.recursion_desired());
     assert!(message.recursion_available());
-    assert_eq!(message.response_code(), ResponseCode::NameError);
+    assert_eq!(message.response_code(), ResponseCode::NxDomain);
     assert_eq!(message.num_questions(), 1);
     let question = message.get_question(0).unwrap();
     assert_eq!(question.class(), IN);
